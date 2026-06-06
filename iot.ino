@@ -5,8 +5,8 @@
 #include <Wire.h>
 
 // WiFi Credentials
-char ssid[] = "WIFI_SSID";
-char pass[] = "WIFI_PASSWORD";
+const char ssid[] = "WIFI_SSID";
+const char pass[] = "WIFI_PASSWORD";
 
 // API Configuration
 const char* serverURL = "BACKEND_URL";
