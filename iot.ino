@@ -102,7 +102,7 @@ void sendEarthquakeToAPI(float magnitude, unsigned long durationMs) {
     http.begin(earthquakeURL);
     http.setTimeout(10000);
     http.addHeader("Content-Type", "application/json");
-    http.addHeader("Authorization", (String("Bearer ") + authToken).c_string());
+    http.addHeader("Authorization", String("Bearer ") + authToken);
     http.addHeader("Token-Type", tokenType);
 
     String payload = "{";
@@ -146,7 +146,7 @@ void sendEarthquakeEmail(float magnitude) {
     http.begin(emailURL);
     http.setTimeout(15000); // 15 second timeout for email
     http.addHeader("Content-Type", "application/json");
-    http.addHeader("Authorization", (String("Bearer ") + authToken).c_string());
+    http.addHeader("Authorization", String("Bearer ") + authToken);
     http.addHeader("Token-Type", tokenType);
 
     String payload = "{";
@@ -395,7 +395,7 @@ void sendReadingToAPI(float avgSI, float minSI, float maxSI) {
     http.begin(serverURL);
     http.setTimeout(10000);
     http.addHeader("Content-Type", "application/json");
-    http.addHeader("Authorization", (String("Bearer ") + authToken).c_string());
+    http.addHeader("Authorization", String("Bearer ") + authToken);
     http.addHeader("Token-Type", tokenType);
 
     String payload = "{";
