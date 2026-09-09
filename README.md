@@ -16,15 +16,15 @@ Arduino firmware for ESP32 and RAKwireless WisBlock hardware designed for real-t
 ### Key Capabilities
 
 - **Real-Time Seismic Sensing**: Reads Spectral Intensity (SI) and Peak Ground Acceleration (PGA) from the D7S sensor over I2C (`0x55`).
-- **Magnitude Estimation**: Converts Spectral Intensity into estimated Richter-scale magnitude ($M$) on-device using empirical piecewise equations.
+- **Magnitude Estimation**: Converts Spectral Intensity into estimated Richter-scale magnitude on-device using empirical piecewise equations.
 - **Local & Remote Alerts**:
-  - **Local Buzzer**: Emits an audible alarm pattern on pin `WB_IO5` when an earthquake is detected ($SI \ge 0.5$) and plays a completion tone when motion subsides.
-  - **Email Notification Webhook**: Sends an instant HTTP POST request to `emailURL` for events $\ge M2.0$.
+  - **Local Buzzer**: Emits an audible alarm pattern on pin `WB_IO5` when an earthquake is detected (SI >= 0.5) and plays a completion tone when motion subsides.
+  - **Email Notification Webhook**: Sends an instant HTTP POST request to `emailURL` for events >= M2.0.
   - **Event Data Logging**: Posts the final recorded magnitude and duration to `earthquakeURL` after the event clears.
 - **5-Minute Periodic Data Reporting**: Aggregates rolling average, minimum, and maximum SI readings along with Wi-Fi signal strength and battery status, posting the summary JSON payload to `serverURL`.
 - **Fault Recovery & Sensor Reconnect**:
   - Power cycles the sensor via `WB_IO2` during startup and recovery.
-  - Tries multiple I2C clock speeds ($100\,\text{kHz}$, $400\,\text{kHz}$, $50\,\text{kHz}$) if connection fails.
+  - Tries multiple I2C clock speeds (100 kHz, 400 kHz, 50 kHz) if connection fails.
   - Automatically attempts sensor re-initialization every 60 seconds if disconnected.
   - Runs an hourly buzzer self-test beep.
 
@@ -83,15 +83,15 @@ flowchart TD
 
 ### Magnitude Conversion Formula
 
-The device calculates estimated earthquake magnitude ($M$) from measured Spectral Intensity ($SI$) using the following piecewise formula:
+The device calculates estimated earthquake magnitude ($M$) from measured Spectral Intensity ($SI$) using the piecewise logic implemented in `convertSIToMagnitude()`:
 
-$$ \text{Magnitude}(SI) = \begin{cases}
-1.0 + (SI \times 2.0) & SI \le 0.5 \\
-2.0 + ((SI - 0.5) \times 1.0) & 0.5 < SI \le 1.5 \\
-3.0 + \left(\frac{SI - 1.5}{1.5}\right) & 1.5 < SI \le 3.0 \\
-4.0 + \left(\frac{SI - 3.0}{3.0}\right) & 3.0 < SI \le 6.0 \\
-5.0 + \left(\frac{SI - 6.0}{4.0}\right) & SI > 6.0
-\end{cases}$$
+```text
+SI <= 0.5       -->  Magnitude = 1.0 + (SI * 2.0)
+0.5 < SI <= 1.5 -->  Magnitude = 2.0 + ((SI - 0.5) * 1.0)
+1.5 < SI <= 3.0 -->  Magnitude = 3.0 + ((SI - 1.5) / 1.5)
+3.0 < SI <= 6.0 -->  Magnitude = 4.0 + ((SI - 3.0) / 3.0)
+SI > 6.0        -->  Magnitude = 5.0 + ((SI - 6.0) / 4.0)
+```
 
 ---
 
@@ -148,16 +148,16 @@ queyk-iot/
 
 Open [`iot.ino`](file:///home/luis/dev/projects/QUEYK/queyk-iot/iot.ino) and update the configuration parameters at the top of the file:
 
-| Variable | Type | Description | Default / Example |
-| :--- | :--- | :--- | :--- |
-| `ssid` | `const char[]` | 2.4 GHz Wi-Fi network SSID | `"WIFI_SSID"` |
-| `pass` | `const char[]` | Wi-Fi network password | `"WIFI_PASSWORD"` |
-| `serverURL` | `const char*` | Endpoint for 5-minute periodic status data | `"https://api.example.com/v1/readings"` |
-| `emailURL` | `const char*` | Webhook URL for instant email notifications | `"https://api.example.com/v1/alerts/email"` |
-| `earthquakeURL` | `const char*` | Endpoint for completed earthquake incident reports | `"https://api.example.com/v1/alerts/earthquake"` |
-| `authToken` | `const char*` | API authentication token | `"AUTH_TOKEN"` |
-| `tokenType` | `const char*` | Token header type | `"Bearer"` / `"TOKEN_TYPE"` |
-| `BUZZER_PIN` | `const int` | GPIO pin connected to buzzer | `WB_IO5` |
+| Variable        | Type           | Description                                        | Default / Example                                |
+| :-------------- | :------------- | :------------------------------------------------- | :----------------------------------------------- |
+| `ssid`          | `const char[]` | 2.4 GHz Wi-Fi network SSID                         | `"WIFI_SSID"`                                    |
+| `pass`          | `const char[]` | Wi-Fi network password                             | `"WIFI_PASSWORD"`                                |
+| `serverURL`     | `const char*`  | Endpoint for 5-minute periodic status data         | `"https://api.example.com/v1/readings"`          |
+| `emailURL`      | `const char*`  | Webhook URL for instant email notifications        | `"https://api.example.com/v1/alerts/email"`      |
+| `earthquakeURL` | `const char*`  | Endpoint for completed earthquake incident reports | `"https://api.example.com/v1/alerts/earthquake"` |
+| `authToken`     | `const char*`  | API authentication token                           | `"AUTH_TOKEN"`                                   |
+| `tokenType`     | `const char*`  | Token header type                                  | `"Bearer"` / `"TOKEN_TYPE"`                      |
+| `BUZZER_PIN`    | `const int`    | GPIO pin connected to buzzer                       | `WB_IO5`                                         |
 
 ### Flashing the Board
 
@@ -206,10 +206,11 @@ Waiting for sensor ready...
 ### API Payload Formats
 
 #### 1. Periodic 5-Minute Status (`POST serverURL`)
+
 ```json
 {
   "siAverage": 0.014,
-  "siMinimum": 0.000,
+  "siMinimum": 0.0,
   "siMaximum": 0.082,
   "battery": 99.7,
   "signalStrength": "-64"
@@ -217,6 +218,7 @@ Waiting for sensor ready...
 ```
 
 #### 2. Immediate Earthquake Trigger (`POST emailURL`)
+
 ```json
 {
   "magnitude": 3.4
@@ -224,6 +226,7 @@ Waiting for sensor ready...
 ```
 
 #### 3. Completed Event Summary (`POST earthquakeURL`)
+
 ```json
 {
   "magnitude": 3.4,
@@ -235,18 +238,17 @@ Waiting for sensor ready...
 
 ## 7. Troubleshooting & Common Issues
 
-| Issue / Symptom | Potential Cause | Solution |
-| :--- | :--- | :--- |
-| `❌ No response from D7S at address 0x55` | Module not seated or power pin off | Check that `WB_IO2` power control is connected and the module is seated securely in its slot. |
-| `❌ Sensor TIMEOUT` | Board moved during calibration | Keep the board completely flat and still during startup calibration (`D7S.initialize()`). |
-| `⚠️ Invalid sensor reading #N` | I2C wiring noise or loose contacts | Firmware will retry reconnection after 5 invalid readings. You can lower I2C clock speed to `50000 Hz` if needed. |
-| `📱 Offline - data not sent` | Wi-Fi disconnect | Verify SSID and password. The device continues running locally and retries sending on subsequent intervals. |
-| `⚠️ API Error 401 / 403` | Authentication failure | Verify your `authToken` and `tokenType` match your backend requirements. |
-| Buzzer silent | Pin mismatch | Check if `BUZZER_PIN` is configured to the correct GPIO pin on your board. |
+| Issue / Symptom                           | Potential Cause                    | Solution                                                                                                          |
+| :---------------------------------------- | :--------------------------------- | :---------------------------------------------------------------------------------------------------------------- |
+| `❌ No response from D7S at address 0x55` | Module not seated or power pin off | Check that `WB_IO2` power control is connected and the module is seated securely in its slot.                     |
+| `❌ Sensor TIMEOUT`                       | Board moved during calibration     | Keep the board completely flat and still during startup calibration (`D7S.initialize()`).                         |
+| `⚠️ Invalid sensor reading #N`            | I2C wiring noise or loose contacts | Firmware will retry reconnection after 5 invalid readings. You can lower I2C clock speed to `50000 Hz` if needed. |
+| `📱 Offline - data not sent`              | Wi-Fi disconnect                   | Verify SSID and password. The device continues running locally and retries sending on subsequent intervals.       |
+| `⚠️ API Error 401 / 403`                  | Authentication failure             | Verify your `authToken` and `tokenType` match your backend requirements.                                          |
+| Buzzer silent                             | Pin mismatch                       | Check if `BUZZER_PIN` is configured to the correct GPIO pin on your board.                                        |
 
 ---
 
 ## License
 
-This project is open-source software licensed under the [MIT License](file:///home/luis/dev/projects/QUEYK/queyk-iot/LICENSE).
-$$
+This project is licensed under the [MIT License](LICENSE).
