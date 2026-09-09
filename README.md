@@ -1,38 +1,38 @@
-# Queyk IoT — Seismic Edge Detection & Telemetry System
+# Queyk IoT: Seismic Sensor and Earthquake Alert System
 
 [![Platform](https://img.shields.io/badge/Platform-ESP32%20%7C%20WisBlock-blue.svg)](https://docs.rakwireless.com/)
 [![Sensor](https://img.shields.io/badge/Sensor-Omron%20D7S%20%2F%20RAK12027-orange.svg)](https://store.rakwireless.com/products/rak12027-d7s-seismic-sensor)
 [![Framework](https://img.shields.io/badge/Framework-Arduino-00979C.svg)](https://www.arduino.cc/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](file:///home/luis/dev/projects/QUEYK/queyk-iot/LICENSE)
 
-An open-source Arduino firmware for ESP32 and RAKwireless WisBlock hardware designed for real-time seismic sensing, edge magnitude calculation, local buzzer alerts, and HTTP cloud telemetry reporting.
+Arduino firmware for ESP32 and RAKwireless WisBlock hardware designed for real-time seismic sensing, earthquake magnitude estimation, local buzzer alarms, and backend data reporting over Wi-Fi.
 
 ---
 
 ## 1. Overview & Key Capabilities
 
-**Queyk IoT** is an IoT edge client that interfaces with an Omron D7S seismic sensor (via the RAK12027 module) to monitor Spectral Intensity (SI) and Peak Ground Acceleration (PGA). It handles on-device earthquake detection, triggers a local acoustic buzzer alarm, and dispatches HTTP alerts and periodic 5-minute rolling telemetry over Wi-Fi.
+**Queyk IoT** runs on an ESP32 micro-controller interfaced with an Omron D7S seismic sensor (via the RAK12027 module) to monitor Spectral Intensity (SI) and Peak Ground Acceleration (PGA). When ground motion exceeds safety thresholds, the device sounds a local alarm buzzer and sends instant HTTP alert notifications to a backend API.
 
 ### Key Capabilities
 
-- **Real-Time Seismic Sensing**: Samples Spectral Intensity (SI) and Peak Ground Acceleration (PGA) from the D7S sensor over I2C (`0x55`).
-- **Edge Magnitude Calculation**: Converts Spectral Intensity into Richter-equivalent seismic magnitude ($M$) using an empirical piecewise model.
-- **Multi-Channel Alert Dispatching**:
-  - **Local Buzzer Alarm**: Plays an alternating dual-pitch alarm sequence on `WB_IO5` upon detecting SI $\ge 0.5$, followed by a clearance tone after hold time.
-  - **Immediate Webhook / Email Trigger**: Fires an HTTP POST request to `emailURL` immediately for events $\ge M2.0$.
-  - **Incident Summary Dispatch**: Posts measured magnitude and duration to `earthquakeURL` once the seismic event clears.
-- **Periodic 5-Minute Telemetry**: Calculates rolling statistical summaries (Average, Minimum, and Maximum SI, simulated battery level, Wi-Fi RSSI) and posts JSON data to `serverURL`.
-- **Built-in Fault Tolerance & Recovery**:
-  - Power cycling routine via `WB_IO2` during boot and reconnect.
-  - Multi-speed I2C initialization ($100\,\text{kHz}$, $400\,\text{kHz}$, $50\,\text{kHz}$).
-  - Automatic consecutive invalid reading tracking with 60-second reinitialization attempts.
-  - Hourly buzzer health check beeps.
+- **Real-Time Seismic Sensing**: Reads Spectral Intensity (SI) and Peak Ground Acceleration (PGA) from the D7S sensor over I2C (`0x55`).
+- **Magnitude Estimation**: Converts Spectral Intensity into estimated Richter-scale magnitude ($M$) on-device using empirical piecewise equations.
+- **Local & Remote Alerts**:
+  - **Local Buzzer**: Emits an audible alarm pattern on pin `WB_IO5` when an earthquake is detected ($SI \ge 0.5$) and plays a completion tone when motion subsides.
+  - **Email Notification Webhook**: Sends an instant HTTP POST request to `emailURL` for events $\ge M2.0$.
+  - **Event Data Logging**: Posts the final recorded magnitude and duration to `earthquakeURL` after the event clears.
+- **5-Minute Periodic Data Reporting**: Aggregates rolling average, minimum, and maximum SI readings along with Wi-Fi signal strength and battery status, posting the summary JSON payload to `serverURL`.
+- **Fault Recovery & Sensor Reconnect**:
+  - Power cycles the sensor via `WB_IO2` during startup and recovery.
+  - Tries multiple I2C clock speeds ($100\,\text{kHz}$, $400\,\text{kHz}$, $50\,\text{kHz}$) if connection fails.
+  - Automatically attempts sensor re-initialization every 60 seconds if disconnected.
+  - Runs an hourly buzzer self-test beep.
 
 ---
 
 ## 2. Architecture / How it Works
 
-The firmware executes an event evaluation loop balancing real-time seismic detection, acoustic alarm management, and periodic telemetry reporting.
+The firmware runs a main loop every 3 seconds, evaluating live sensor readings, updating circular buffers, handling buzzer states, and sending periodic updates.
 
 ```mermaid
 flowchart TD
@@ -57,7 +57,7 @@ flowchart TD
         J -- Yes --> O[Push to 100-Sample Circular Buffer]
     end
 
-    subgraph EarthquakePipeline ["Seismic Event Pipeline"]
+    subgraph EarthquakePipeline ["Seismic Alert Pipeline"]
         O --> P{SI >= 0.5 & Not Active?}
         P -- Yes --> Q[Trigger Earthquake Alert State]
         Q --> R[Convert SI to Richter Magnitude]
@@ -72,18 +72,18 @@ flowchart TD
         Z --> AA[Reset Event State]
     end
 
-    subgraph TelemetryPipeline ["5-Minute Telemetry Pipeline"]
+    subgraph PeriodicReporting ["5-Minute Periodic Reporting"]
         O --> AB{Interval >= 5 min?}
         AB -- Yes --> AC[Calculate Rolling Avg, Min, Max SI]
         AC --> AD[Compile Battery Level & RSSI]
-        AD --> AE[POST Payload to Backend Ingestion URL]
+        AD --> AE[POST Payload to Backend Server URL]
         AE --> AF[Flush Buffer & Reset Window Timer]
     end
 ```
 
-### Empirical Magnitude Conversion Model
+### Magnitude Conversion Formula
 
-The firmware maps Spectral Intensity ($SI$ in $\text{m/s}$ or $\text{kine}$) to estimated local earthquake magnitude ($M$) according to the following piecewise model:
+The device calculates estimated earthquake magnitude ($M$) from measured Spectral Intensity ($SI$) using the following piecewise formula:
 
 $$ \text{Magnitude}(SI) = \begin{cases}
 1.0 + (SI \times 2.0) & SI \le 0.5 \\
@@ -97,17 +97,17 @@ $$ \text{Magnitude}(SI) = \begin{cases}
 
 ## 3. Tech Stack
 
-- **Target Architecture**: Espressif ESP32 Core / RAKwireless WisBlock Core (e.g., RAK11200 / ESP32)
+- **Target Hardware**: ESP32 / RAKwireless WisBlock Core (e.g., RAK11200 / ESP32 DevKit)
 - **Primary Language**: C++ (Arduino Core)
-- **Sensors & Peripherals**:
-  - [Omron D7S](https://components.omron.com/us-en/products/sensors/D7S) / [RAK12027](https://store.rakwireless.com/products/rak12027-d7s-seismic-sensor) Seismic Sensor (I2C address: `0x55`)
+- **Sensors & Components**:
+  - [Omron D7S](https://components.omron.com/us-en/products/sensors/D7S) / [RAK12027](https://store.rakwireless.com/products/rak12027-d7s-seismic-sensor) Seismic Sensor (I2C: `0x55`)
   - Piezo Buzzer (`WB_IO5`)
-  - Sensor Power Control Pin (`WB_IO2`)
-- **Core Dependencies**:
+  - Sensor Power Gate Pin (`WB_IO2`)
+- **Libraries**:
   - [`RAK12027_D7S.h`](https://github.com/RAKWireless/RAK12027-D7S): Hardware driver for Omron D7S
-  - [`WiFi.h`](https://github.com/espressif/arduino-esp32/tree/master/libraries/WiFi): ESP32 Wi-Fi station library
-  - [`HTTPClient.h`](https://github.com/espressif/arduino-esp32/tree/master/libraries/HTTPClient): HTTP client library with Bearer token authentication
-  - [`Wire.h`](https://github.com/espressif/arduino-esp32/tree/master/libraries/Wire): I2C communication library
+  - [`WiFi.h`](https://github.com/espressif/arduino-esp32/tree/master/libraries/WiFi): Wi-Fi connectivity
+  - [`HTTPClient.h`](https://github.com/espressif/arduino-esp32/tree/master/libraries/HTTPClient): HTTP POST client with token auth
+  - [`Wire.h`](https://github.com/espressif/arduino-esp32/tree/master/libraries/Wire): I2C communication
 
 ---
 
@@ -116,18 +116,18 @@ $$ \text{Magnitude}(SI) = \begin{cases}
 ```
 queyk-iot/
 ├── LICENSE              # MIT License
-├── README.md            # Project technical documentation
-└── iot.ino              # Main Arduino firmware source code
+├── README.md            # Project documentation
+└── iot.ino              # Arduino firmware source code
 ```
 
-### Module Descriptions
+### Source Code Overview
 
 - [`iot.ino`](file:///home/luis/dev/projects/QUEYK/queyk-iot/iot.ino):
-  - **Configuration & Constants**: Network credentials, API endpoints, auth token headers, and pin configurations.
-  - **I2C Scanner & Power Management**: Bus scanning (`scanI2C()`) and sensor power cycling (`WB_IO2`).
-  - **Sensor Engine**: Multi-frequency I2C initialization, status polling (`D7S.isReady()`), and SI/PGA reading acquisition.
-  - **Statistical Buffer**: Circular buffer storing up to 100 historical readings for rolling average, min, and max computations.
-  - **Alerting & Actuation**: Piezo buzzer tone routines (`soundEarthquakeAlarm()`, `soundSuccessTone()`) and HTTP POST alert dispatchers.
+  - **Config & Network**: Wi-Fi credentials, backend API endpoints, and authentication headers.
+  - **Hardware Setup**: I2C bus scanner (`scanI2C()`) and power-cycling routines.
+  - **Sensor Management**: Multi-frequency I2C initialization, status checks (`D7S.isReady()`), and SI/PGA data reads.
+  - **Circular Buffer**: 100-reading buffer for rolling statistics (average, minimum, maximum).
+  - **Alerts & Audio**: Buzzer tone generation (`soundEarthquakeAlarm()`, `soundSuccessTone()`) and HTTP POST dispatchers.
 
 ---
 
@@ -136,44 +136,44 @@ queyk-iot/
 ### Prerequisites
 
 1. **Hardware**:
-   - ESP32 development board or RAKwireless WisBlock Base + Core (RAK5005-O + RAK11200 / RAK4631).
-   - RAK12027 (Omron D7S) seismic sensor module mounted flat and level.
-   - Buzzer connected to `WB_IO5` (or configured GPIO).
+   - ESP32 board or RAKwireless WisBlock Base + Core (RAK5005-O + RAK11200 / RAK4631).
+   - RAK12027 (Omron D7S) seismic sensor module mounted flat on a stable surface.
+   - Buzzer connected to `WB_IO5` (or configured GPIO pin).
 2. **Software**:
    - [Arduino IDE](https://www.arduino.cc/en/software) (v2.0+) or [PlatformIO](https://platformio.org/).
-   - ESP32 Board Package installed in Arduino Board Manager.
+   - ESP32 Board package installed.
    - `RAK12027_D7S` library installed via Library Manager.
 
 ### Configuration Variables
 
-Open [`iot.ino`](file:///home/luis/dev/projects/QUEYK/queyk-iot/iot.ino) and configure your Wi-Fi and backend settings:
+Open [`iot.ino`](file:///home/luis/dev/projects/QUEYK/queyk-iot/iot.ino) and update the configuration parameters at the top of the file:
 
 | Variable | Type | Description | Default / Example |
 | :--- | :--- | :--- | :--- |
-| `ssid` | `const char[]` | Wi-Fi SSID | `"WIFI_SSID"` |
-| `pass` | `const char[]` | Wi-Fi password | `"WIFI_PASSWORD"` |
-| `serverURL` | `const char*` | HTTP endpoint for 5-minute statistical telemetry | `"https://api.example.com/v1/telemetry"` |
-| `emailURL` | `const char*` | HTTP webhook for immediate email alerts | `"https://api.example.com/v1/alerts/email"` |
-| `earthquakeURL` | `const char*` | HTTP endpoint for earthquake completion reports | `"https://api.example.com/v1/alerts/earthquake"` |
-| `authToken` | `const char*` | Bearer auth token for HTTP headers | `"AUTH_TOKEN"` |
-| `tokenType` | `const char*` | Header identifier for token type | `"Bearer"` / `"TOKEN_TYPE"` |
-| `BUZZER_PIN` | `const int` | Buzzer GPIO output pin | `WB_IO5` |
+| `ssid` | `const char[]` | 2.4 GHz Wi-Fi network SSID | `"WIFI_SSID"` |
+| `pass` | `const char[]` | Wi-Fi network password | `"WIFI_PASSWORD"` |
+| `serverURL` | `const char*` | Endpoint for 5-minute periodic status data | `"https://api.example.com/v1/readings"` |
+| `emailURL` | `const char*` | Webhook URL for instant email notifications | `"https://api.example.com/v1/alerts/email"` |
+| `earthquakeURL` | `const char*` | Endpoint for completed earthquake incident reports | `"https://api.example.com/v1/alerts/earthquake"` |
+| `authToken` | `const char*` | API authentication token | `"AUTH_TOKEN"` |
+| `tokenType` | `const char*` | Token header type | `"Bearer"` / `"TOKEN_TYPE"` |
+| `BUZZER_PIN` | `const int` | GPIO pin connected to buzzer | `WB_IO5` |
 
-### Flashing via Arduino IDE
+### Flashing the Board
 
-1. Connect the ESP32 / WisBlock board via USB.
-2. Select your board in **Tools > Board** (e.g., *ESP32 Dev Module* or *WisBlock Core*).
-3. Select the serial port under **Tools > Port**.
+1. Plug the ESP32 / WisBlock board into your computer via USB.
+2. In Arduino IDE, select your board from **Tools > Board**.
+3. Select your serial port under **Tools > Port**.
 4. Click **Upload**.
-5. Open **Tools > Serial Monitor** at `115200` baud.
+5. Open **Tools > Serial Monitor** and set baud rate to `115200`.
 
 ---
 
-## 6. Usage & Telemetry Reference
+## 6. Usage & Data Payloads
 
-### Serial Diagnostics Output
+### Serial Monitor Output
 
-When booted, the board outputs startup diagnostics and real-time status:
+During normal operation, the board outputs startup diagnostics and periodic status messages:
 
 ```text
 🔄 === DEVICE STARTUP ===
@@ -203,9 +203,9 @@ Waiting for sensor ready...
 📊 Normal | SI: 0.002 | Magnitude: M1.0 | Rolling Avg: 0.002 | Min: 0.000 | Max: 0.002 | Source: REAL | Email: READY
 ```
 
-### JSON Payloads
+### API Payload Formats
 
-#### 1. Periodic 5-Minute Telemetry (`POST serverURL`)
+#### 1. Periodic 5-Minute Status (`POST serverURL`)
 ```json
 {
   "siAverage": 0.014,
@@ -223,7 +223,7 @@ Waiting for sensor ready...
 }
 ```
 
-#### 3. Event Completion Report (`POST earthquakeURL`)
+#### 3. Completed Event Summary (`POST earthquakeURL`)
 ```json
 {
   "magnitude": 3.4,
@@ -233,16 +233,16 @@ Waiting for sensor ready...
 
 ---
 
-## 7. Troubleshooting & Error Handling
+## 7. Troubleshooting & Common Issues
 
-| Issue / Symptom | Potential Cause | Remediation Step |
+| Issue / Symptom | Potential Cause | Solution |
 | :--- | :--- | :--- |
-| `❌ No response from D7S at address 0x55` | Sensor unseated or power rail off | Check that `WB_IO2` power control is driven HIGH and the module is seated securely in the I2C socket. |
-| `❌ Sensor TIMEOUT` | Sensor not stable during startup | Mount the sensor on a flat, vibration-free surface during the startup calibration phase (`D7S.initialize()`). |
-| `⚠️ Invalid sensor reading #N` | I2C line noise or loose jumper wires | The firmware attempts recovery after 5 consecutive invalid readings. Try lowering I2C clock speed to `50000 Hz`. |
-| `📱 Offline - data not sent` | Wi-Fi disconnected | Verify SSID/password and ensure 2.4 GHz network availability. The device retries transmission on subsequent loops. |
-| `⚠️ API Error 401 / 403` | Unauthorized endpoint access | Verify `authToken` and `tokenType` values in the configuration header. |
-| Buzzer silent during test | Pin mismatch | Check if `BUZZER_PIN` matches the connected pin on your specific board revision. |
+| `❌ No response from D7S at address 0x55` | Module not seated or power pin off | Check that `WB_IO2` power control is connected and the module is seated securely in its slot. |
+| `❌ Sensor TIMEOUT` | Board moved during calibration | Keep the board completely flat and still during startup calibration (`D7S.initialize()`). |
+| `⚠️ Invalid sensor reading #N` | I2C wiring noise or loose contacts | Firmware will retry reconnection after 5 invalid readings. You can lower I2C clock speed to `50000 Hz` if needed. |
+| `📱 Offline - data not sent` | Wi-Fi disconnect | Verify SSID and password. The device continues running locally and retries sending on subsequent intervals. |
+| `⚠️ API Error 401 / 403` | Authentication failure | Verify your `authToken` and `tokenType` match your backend requirements. |
+| Buzzer silent | Pin mismatch | Check if `BUZZER_PIN` is configured to the correct GPIO pin on your board. |
 
 ---
 
